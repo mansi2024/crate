@@ -21,10 +21,12 @@
 
 package io.crate.parquet;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 
 import dev.hardwood.metadata.PhysicalType;
+import dev.hardwood.reader.FilterPredicate;
 import dev.hardwood.reader.RowReader;
 import dev.hardwood.row.PqStruct;
 import dev.hardwood.row.StructAccessor;
@@ -127,5 +129,19 @@ public class ParquetToCrate {
         ColumnIdent col = ref.column();
         return readValue(rowReader, ref.valueType(), col.fqn(), fileSchema, col);
 
+    }
+
+    public static FilterPredicate toEq(Reference ref, Object value) {
+        DataType<?> type = ref.valueType();
+        String fqn = ref.column().fqn();
+        return switch (type.id()) {
+            case BooleanType.ID -> FilterPredicate.eq(fqn, (boolean) value);
+            case IntegerType.ID -> FilterPredicate.eq(fqn, (int) value);
+            case ShortType.ID -> FilterPredicate.eq(fqn, (int) value);
+            case LongType.ID -> FilterPredicate.eq(fqn, (long) value);
+            case NumericType.ID -> FilterPredicate.eq(fqn, (BigDecimal) value);
+            case FloatType.ID -> FilterPredicate.eq(fqn, (float) value);
+            default -> null;
+        };
     }
 }

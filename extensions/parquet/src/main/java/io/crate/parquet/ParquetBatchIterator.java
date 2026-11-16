@@ -22,6 +22,7 @@
 package io.crate.parquet;
 
 import static io.crate.parquet.ParquetToCrate.readColumn;
+import static io.crate.parquet.ParquetToCrate.toEq;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -30,6 +31,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 import dev.hardwood.InputFile;
+import dev.hardwood.reader.FilterPredicate;
 import dev.hardwood.reader.ParquetFileReader;
 import dev.hardwood.reader.RowReader;
 import dev.hardwood.reader.ParquetFileReader.RowReaderBuilder;
@@ -39,6 +41,12 @@ import io.crate.common.exceptions.Exceptions;
 import io.crate.data.BatchIterator;
 import io.crate.data.Row;
 import io.crate.data.RowN;
+import io.crate.expression.operator.AndOperator;
+import io.crate.expression.operator.EqOperator;
+import io.crate.expression.symbol.Function;
+import io.crate.expression.symbol.Literal;
+import io.crate.expression.symbol.Symbol;
+import io.crate.expression.symbol.SymbolType;
 import io.crate.metadata.Reference;
 
 public class ParquetBatchIterator implements BatchIterator<Row> {
@@ -50,14 +58,31 @@ public class ParquetBatchIterator implements BatchIterator<Row> {
     private FileSchema fileSchema;
     private RowReader rowReader;
     private final List<Reference> columns;
+    private final Symbol predicates;
     private final List<InputFile> inputFiles;
     private volatile Throwable killed = null;
+    private List<Symbol> andPredicates;
 
-    public ParquetBatchIterator(List<InputFile> inputFiles, List<Reference> columns) {
+    public ParquetBatchIterator(List<InputFile> inputFiles, List<Reference> columns, Symbol predicates) {
         this.inputFiles = inputFiles;
         this.columns = columns;
+        this.predicates = predicates;
         this.cells = new Object[columns.size()];
         this.row = new RowN(cells);
+    }
+
+    private FilterPredicate buildFilters() {
+        if (predicates instanceof Function) {
+            Function func = (Function) predicates;
+            if (func.name().equals(EqOperator.NAME)) {
+                Symbol left = func.arguments().get(0);
+                Symbol right = func.arguments().get(1);
+                if (left.symbolType() == SymbolType.REFERENCE && right instanceof Literal<?> literal) {
+                    return toEq((Reference) left, literal.value());
+                }
+            }
+        }
+        return null;
     }
 
     private void raiseIfKilled() {
@@ -155,6 +180,10 @@ public class ParquetBatchIterator implements BatchIterator<Row> {
                 builder.projection(ColumnProjection.columns(columns.stream()
                     .map(ref -> ref.column().fqn())
                     .toArray(String[]::new)));
+            }
+            FilterPredicate filter = buildFilters();
+            if (filter != null) {
+                builder.filter(filter);
             }
             rowReader = builder.build();
         } catch (IOException e) {

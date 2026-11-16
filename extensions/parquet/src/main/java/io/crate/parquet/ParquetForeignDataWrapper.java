@@ -75,7 +75,7 @@ public class ParquetForeignDataWrapper implements ForeignDataWrapper {
 
     @Override
     public boolean supportsQueryPushdown(Symbol query) {
-        return false;
+        return true;
     }
 
     @Override
@@ -87,6 +87,8 @@ public class ParquetForeignDataWrapper implements ForeignDataWrapper {
     public List<Setting<?>> optionalServerOptions() {
         return optionalServerOptions;
     }
+
+    record ColumnFilter(String column, String operator, Object value) {}
 
     @Override
     public CompletableFuture<BatchIterator<Row>> getIterator(Role currentUser,
@@ -139,7 +141,7 @@ public class ParquetForeignDataWrapper implements ForeignDataWrapper {
             });
         }
 
-        BatchIterator<Row> it = new ParquetBatchIterator(inputFiles, columns);
+        BatchIterator<Row> it = new ParquetBatchIterator(inputFiles, columns, query);
 
         SourceSymbols sourceRefs = new InputColumns.SourceSymbols(columns);
         List<Symbol> inputColumns = InputColumns.create(collect, sourceRefs);
