@@ -41,9 +41,12 @@ import com.carrotsearch.randomizedtesting.RandomizedContext;
 import com.carrotsearch.randomizedtesting.generators.RandomPicks;
 
 import io.crate.Streamer;
+import io.crate.data.Row;
+import io.crate.data.Row1;
 import io.crate.data.breaker.RamAccounting;
 import io.crate.execution.engine.aggregation.AggregationFunction;
 import io.crate.execution.engine.aggregation.impl.HyperLogLogPlusPlus;
+import io.crate.execution.engine.distribution.StreamBucket;
 import io.crate.expression.symbol.Literal;
 import io.crate.memory.OnHeapMemoryManager;
 import io.crate.metadata.FunctionImplementation;
@@ -252,5 +255,24 @@ public class HyperLogLogDistinctAggregationTest extends AggregationTestCase {
         hllState1.addHash("127.0.0.1".hashCode());
         hllState2.addHash("127.0.0.1".hashCode());
         assertThat(hllState2.value()).isEqualTo(hllState1.value());
+    }
+
+    @Test
+    public void test_bwc_streaming() throws Exception {
+        var legacyState = new HyperLogLogDistinctAggregation.LegacyHllState(DataTypes.LONG);
+        legacyState.init(memoryManager, HyperLogLogPlusPlus.DEFAULT_PRECISION);
+
+        Streamer<?>[] streamers = new Streamer[] { HyperLogLogDistinctAggregation.HllStateType.INSTANCE.streamer() };
+        var builder = new StreamBucket.Builder(streamers, RamAccounting.NO_ACCOUNTING);
+        builder.add(new Row1(legacyState));
+
+        BytesStreamOutput out = new BytesStreamOutput();
+        out.setVersion(Version.V_6_1_0);
+        builder.build().writeTo(out);
+
+        StreamInput in = out.bytes().streamInput();
+        in.setVersion(Version.V_6_1_0); // iterator() used to discard actual version and use CURRENT.
+        Row row = new StreamBucket(in, streamers).iterator().next();
+        assertThat(row.get(0)).isEqualTo(legacyState);
     }
 }

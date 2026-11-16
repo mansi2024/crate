@@ -29,6 +29,7 @@ import java.util.Collections;
 import java.util.Iterator;
 
 import org.apache.lucene.util.Accountable;
+import org.elasticsearch.Version;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
 import org.elasticsearch.common.io.stream.StreamInput;
@@ -47,6 +48,7 @@ public class StreamBucket implements Bucket, Writeable {
     private Streamer<?>[] streamers;
     private int size = -1;
     private BytesReference bytes;
+    private Version version;
 
     public static class Builder implements Accountable {
 
@@ -177,7 +179,12 @@ public class StreamBucket implements Bucket, Writeable {
         }
         assert streamers != null : "streamers must not be null";
         try {
-            return new RowIterator(bytes.streamInput(), streamers, size);
+            // streamInput() created from bytes uses Version.CURRENT by default.
+            // We must preserve original version used to write those bytes,
+            // so that any BWC code can reliably use getVersion().
+            var streamInput = bytes.streamInput();
+            streamInput.setVersion(version);
+            return new RowIterator(streamInput, streamers, size);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -201,6 +208,7 @@ public class StreamBucket implements Bucket, Writeable {
         if (size > 0) {
             bytes = in.readBytesReference();
         }
+        this.version = in.getVersion();
     }
 
     @Override
