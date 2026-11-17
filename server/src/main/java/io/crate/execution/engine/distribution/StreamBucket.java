@@ -48,7 +48,7 @@ public class StreamBucket implements Bucket, Writeable {
     private Streamer<?>[] streamers;
     private int size = -1;
     private BytesReference bytes;
-    private Version version;
+    private final Version version;
 
     public static class Builder implements Accountable {
 
@@ -108,6 +108,8 @@ public class StreamBucket implements Bucket, Writeable {
     public StreamBucket(@Nullable Streamer<?>[] streamers) {
         assert validStreamers(streamers) : "streamers must not be null and they shouldn't be of undefinedType";
         this.streamers = streamers;
+        // Explicitly set version for requests sent to the local node.
+        this.version = Version.CURRENT;
     }
 
     @Override
