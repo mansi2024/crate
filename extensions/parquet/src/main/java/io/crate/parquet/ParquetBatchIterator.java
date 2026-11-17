@@ -22,11 +22,12 @@
 package io.crate.parquet;
 
 import static io.crate.parquet.ParquetToCrate.readColumn;
-import static io.crate.parquet.ParquetToCrate.toEq;
+import static io.crate.parquet.Predicates.createFilterPredicate;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
@@ -41,12 +42,14 @@ import io.crate.common.exceptions.Exceptions;
 import io.crate.data.BatchIterator;
 import io.crate.data.Row;
 import io.crate.data.RowN;
-import io.crate.expression.operator.AndOperator;
 import io.crate.expression.operator.EqOperator;
+import io.crate.expression.operator.GtOperator;
+import io.crate.expression.operator.GteOperator;
+import io.crate.expression.operator.LtOperator;
+import io.crate.expression.operator.LteOperator;
 import io.crate.expression.symbol.Function;
 import io.crate.expression.symbol.Literal;
 import io.crate.expression.symbol.Symbol;
-import io.crate.expression.symbol.SymbolType;
 import io.crate.metadata.Reference;
 
 public class ParquetBatchIterator implements BatchIterator<Row> {
@@ -61,7 +64,13 @@ public class ParquetBatchIterator implements BatchIterator<Row> {
     private final Symbol predicates;
     private final List<InputFile> inputFiles;
     private volatile Throwable killed = null;
-    private List<Symbol> andPredicates;
+    public static final Map<String, FilterPredicate.Operator> FILTER_PUSHDOWN_OPERATORS = Map.of(
+        EqOperator.NAME, FilterPredicate.Operator.EQ,
+        GtOperator.NAME, FilterPredicate.Operator.GT,
+        GteOperator.NAME, FilterPredicate.Operator.GT_EQ,
+        LtOperator.NAME, FilterPredicate.Operator.LT,
+        LteOperator.NAME, FilterPredicate.Operator.LT_EQ
+    );
 
     public ParquetBatchIterator(List<InputFile> inputFiles, List<Reference> columns, Symbol predicates) {
         this.inputFiles = inputFiles;
@@ -71,14 +80,15 @@ public class ParquetBatchIterator implements BatchIterator<Row> {
         this.row = new RowN(cells);
     }
 
-    private FilterPredicate buildFilters() {
+    private FilterPredicate createFilter() {
         if (predicates instanceof Function) {
             Function func = (Function) predicates;
-            if (func.name().equals(EqOperator.NAME)) {
+            FilterPredicate.Operator hardwoodOperator = FILTER_PUSHDOWN_OPERATORS.get(func.name());
+            if (hardwoodOperator != null) {
                 Symbol left = func.arguments().get(0);
                 Symbol right = func.arguments().get(1);
-                if (left.symbolType() == SymbolType.REFERENCE && right instanceof Literal<?> literal) {
-                    return toEq((Reference) left, literal.value());
+                if (left instanceof Reference ref && right instanceof Literal<?> literal) {
+                    return createFilterPredicate(ref, literal.value(), hardwoodOperator);
                 }
             }
         }
@@ -181,7 +191,7 @@ public class ParquetBatchIterator implements BatchIterator<Row> {
                     .map(ref -> ref.column().fqn())
                     .toArray(String[]::new)));
             }
-            FilterPredicate filter = buildFilters();
+            FilterPredicate filter = createFilter();
             if (filter != null) {
                 builder.filter(filter);
             }

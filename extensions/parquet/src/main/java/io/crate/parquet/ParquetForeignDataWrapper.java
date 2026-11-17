@@ -81,6 +81,7 @@ public class ParquetForeignDataWrapper implements ForeignDataWrapper {
                 return true;
             }
         }
+        // TODO: check if array or objects are pushed down here, might have to return false
         return false;
     }
 
