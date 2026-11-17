@@ -58,6 +58,7 @@ import io.crate.metadata.RelationMetadata;
 import io.crate.fdw.ServersMetadata.Server;
 import io.crate.expression.InputFactory;
 import io.crate.role.Role;
+import io.crate.expression.symbol.Function;
 
 public class ParquetForeignDataWrapper implements ForeignDataWrapper {
 
@@ -75,7 +76,12 @@ public class ParquetForeignDataWrapper implements ForeignDataWrapper {
 
     @Override
     public boolean supportsQueryPushdown(Symbol query) {
-        return true;
+        if (query instanceof Function function) {
+            if (ParquetBatchIterator.FILTER_PUSHDOWN_OPERATORS.containsKey(function.name())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
