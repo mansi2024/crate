@@ -84,12 +84,13 @@ public class ParquetBatchIterator implements BatchIterator<Row> {
         if (predicates instanceof Function) {
             Function func = (Function) predicates;
             FilterPredicate.Operator hardwoodOperator = FILTER_PUSHDOWN_OPERATORS.get(func.name());
-            if (hardwoodOperator != null) {
-                Symbol left = func.arguments().get(0);
-                Symbol right = func.arguments().get(1);
-                if (left instanceof Reference ref && right instanceof Literal<?> literal) {
-                    return createFilterPredicate(ref, literal.value(), hardwoodOperator);
-                }
+            if (hardwoodOperator == null) {
+                throw new UnsupportedOperationException("Unexpected error: Cannot push predicate down for operator: " + func.name());
+            }
+            Symbol left = func.arguments().get(0);
+            Symbol right = func.arguments().get(1);
+            if (left instanceof Reference ref && right instanceof Literal<?> literal) {
+                return createFilterPredicate(ref, literal.value(), hardwoodOperator);
             }
         }
         return null;

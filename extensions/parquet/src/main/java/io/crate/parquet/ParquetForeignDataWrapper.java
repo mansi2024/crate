@@ -58,6 +58,7 @@ import io.crate.metadata.RelationMetadata;
 import io.crate.fdw.ServersMetadata.Server;
 import io.crate.expression.InputFactory;
 import io.crate.role.Role;
+import io.crate.types.ArrayType;
 import io.crate.expression.symbol.Function;
 
 public class ParquetForeignDataWrapper implements ForeignDataWrapper {
@@ -77,11 +78,14 @@ public class ParquetForeignDataWrapper implements ForeignDataWrapper {
     @Override
     public boolean supportsQueryPushdown(Symbol query) {
         if (query instanceof Function function) {
+            Symbol ref = function.arguments().get(0);
+            if (ref.valueType() instanceof ArrayType) {
+                return false;
+            }
             if (ParquetBatchIterator.FILTER_PUSHDOWN_OPERATORS.containsKey(function.name())) {
                 return true;
             }
         }
-        // TODO: check if array or objects are pushed down here, might have to return false
         return false;
     }
 

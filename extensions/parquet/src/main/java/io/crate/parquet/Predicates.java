@@ -186,9 +186,7 @@ public class Predicates {
                 yield timestampPredicate(op, fqn, instant);
             }
             case UUIDType.ID -> uuidPredicate(op, fqn, UUIDType.INSTANCE.implicitCast(value));
-            // TODO: figure out the arrays. Check if Hardwood can push those filters down. If not, figure out how to already return
-            // false at supportsQueryPushdown
-            default -> null;
+            default -> throw new UnsupportedOperationException("Unexpected error: Cannot push predicate down for " + type.toString());
         };
     }
 
